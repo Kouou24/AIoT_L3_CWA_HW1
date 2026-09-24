@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>台灣天氣 GIS Dashboard</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #334155;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #7dd3fc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header h1 span { font-size: 1.4rem; }
+
+    .header-meta {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      text-align: right;
+    }
+    .header-meta strong { color: #38bdf8; }
+
+    /* ── Main layout ─────────────────────────────────── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────── */
+    .sidebar {
+      width: 320px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .sidebar-header {
+      padding: 12px 16px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #7dd3fc;
+    }
+    .refresh-btn {
+      background: #0369a1;
+      border: none;
+      color: #e0f2fe;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: background 0.2s;
+    }
+    .refresh-btn:hover { background: #0284c7; }
+    .refresh-btn:disabled { background: #334155; cursor: not-allowed; }
+
+    .location-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .location-list::-webkit-scrollbar { width: 4px; }
+    .location-list::-webkit-scrollbar-track { background: #1e293b; }
+    .location-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+
+    .loc-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .loc-card:hover, .loc-card.active {
+      border-color: #38bdf8;
+      background: #1e3a5f;
+    }
+    .loc-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+    .loc-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #e2e8f0;
+    }
+    .loc-weather-icon { font-size: 1.1rem; }
+
+    .loc-temps {
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+    .loc-temps strong { color: #fbbf24; }
+    .loc-pop {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 0.72rem;
+      background: #0369a1;
+      color: #e0f2fe;
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+
+    .loc-slots {
+      display: none;
+      margin-top: 8px;
+      border-top: 1px solid #334155;
+      padding-top: 6px;
+    }
+    .loc-card.active .loc-slots { display: block; }
+    .slot-row {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      padding: 2px 0;
+      display: flex;
+      gap: 6px;
+    }
+    .slot-row span:first-child { color: #64748b; min-width: 80px; }
+
+    /* ── Map ─────────────────────────────────────────── */
+    #map {
+      flex: 1;
+      z-index: 0;
+    }
+
+    /* ── Leaflet popup custom ─────────────────────────── */
+    .leaflet-popup-content-wrapper {
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      border-radius: 10px;
+      color: #e2e8f0;
+    }
+    .leaflet-popup-tip { background: #1e293b; }
+    .leaflet-popup-content { margin: 12px 16px; min-width: 200px; }
+
+    .popup-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #7dd3fc;
+      margin-bottom: 6px;
+    }
+    .popup-row {
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      margin: 2px 0;
+      display: flex;
+      gap: 4px;
+    }
+    .popup-row label { color: #64748b; min-width: 60px; }
+    .popup-row span { color: #f8fafc; }
+
+    .popup-slots { margin-top: 8px; border-top: 1px solid #334155; padding-top: 6px; }
+    .popup-slot-row {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin: 2px 0;
+    }
+
+    /* ── Status bar ──────────────────────────────────── */
+    .statusbar {
+      background: #0f172a;
+      border-top: 1px solid #334155;
+      padding: 4px 16px;
+      font-size: 0.72rem;
+      color: #64748b;
+      display: flex;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    .statusbar span { color: #38bdf8; }
+
+    /* ── Loading overlay ─────────────────────────────── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.85);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid #334155;
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: #7dd3fc; font-size: 0.9rem; }
+    #loading.hidden { display: none; }
+
+    /* ── Weather icon map ─────────────────────────────── */
+  </style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <p>載入天氣資料中…</p>
+</div>
+
+<!-- Header (3G) -->
+<header>
+  <h1><span>🌏</span> 台灣即時天氣 GIS Dashboard</h1>
+  <div class="header-meta">
+    資料來源：<strong>中央氣象署 CWA Open Data</strong><br/>
+    Dataset: F-C0032-001 │ 今明 36 小時天氣預報
+  </div>
+</header>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Sidebar (3D + 3E) -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>📍 22 縣市清單</span>
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshData()">🔄 更新資料</button>
+    </div>
+    <div class="location-list" id="locationList">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <!-- Map (3A + 3B + 3C + 3F) -->
+  <div id="map"></div>
+
+</div>
+
+<!-- Status bar -->
+<div class="statusbar">
+  <div>資料筆數：<span id="statRows">—</span></div>
+  <div>縣市數量：<span id="statLocs">—</span></div>
+  <div>最後更新：<span id="statTime">—</span></div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ── 3A: Taiwan Map ─────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [23.6, 121.0],
+  zoom: 7,
+  zoomControl: true,
+});
+
+// OpenStreetMap tile layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+// ── Weather icon helper ────────────────────────────────────────────────────
+function weatherIcon(weather) {
+  if (!weather) return '🌡️';
+  if (weather.includes('雨')) return '🌧️';
+  if (weather.includes('雪')) return '❄️';
+  if (weather.includes('雷')) return '⛈️';
+  if (weather.includes('陰')) return '☁️';
+  if (weather.includes('多雲')) return '⛅';
+  if (weather.includes('晴')) return '☀️';
+  return '🌡️';
+}
+
+function tempColor(maxT) {
+  if (maxT >= 35) return '#ef4444';
+  if (maxT >= 30) return '#f97316';
+  if (maxT >= 25) return '#eab308';
+  if (maxT >= 20) return '#22c55e';
+  return '#38bdf8';
+}
+
+// ── 3B: Custom marker icon factory ────────────────────────────────────────
+function makeMarkerIcon(weather, maxTemp) {
+  const icon = weatherIcon(weather);
+  const color = tempColor(maxTemp || 25);
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      background:${color};
+      border:2px solid white;
+      border-radius:50% 50% 50% 0;
+      width:32px;height:32px;
+      transform:rotate(-45deg);
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 2px 6px rgba(0,0,0,0.4);
+    "><span style="transform:rotate(45deg);font-size:14px">${icon}</span></div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -34],
+  });
+}
+
+// ── Global state ───────────────────────────────────────────────────────────
+let markers = {};
+let weatherData = [];
+let activeCard = null;
+
+// ── 3C: Build popup HTML ───────────────────────────────────────────────────
+function buildPopupHtml(loc) {
+  const first = loc.forecasts[0] || {};
+  const icon  = weatherIcon(first.weather);
+  let slotsHtml = '';
+  loc.forecasts.forEach(f => {
+    const s = f.start_time.slice(5, 16);
+    const e = f.end_time.slice(5, 16);
+    slotsHtml += `<div class="popup-slot-row">
+      ${s}~${e} ${weatherIcon(f.weather)} ${f.weather}
+      ${f.min_temp}°~${f.max_temp}° PoP:${f.pop}%
+    </div>`;
+  });
+
+  return `
+    <div class="popup-title">${icon} ${loc.name}</div>
+    <div class="popup-row"><label>天氣</label><span>${first.weather || 'N/A'}</span></div>
+    <div class="popup-row"><label>溫度</label><span>${first.min_temp}°C ~ ${first.max_temp}°C</span></div>
+    <div class="popup-row"><label>降雨機率</label><span>${first.pop}%</span></div>
+    <div class="popup-slots">${slotsHtml}</div>
+  `;
+}
+
+// ── 3D + 3E: Load weather from DB API and render markers ──────────────────
+async function loadWeather() {
+  document.getElementById('loading').classList.remove('hidden');
+  try {
+    const resp = await fetch('/api/weather');
+    weatherData = await resp.json();
+
+    // Clear old markers
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {};
+
+    const listEl = document.getElementById('locationList');
+    listEl.innerHTML = '';
+
+    let totalRows = 0;
+
+    // ── 3B + 3C + 3D: For each location add marker + sidebar card ─────────
+    weatherData.forEach(loc => {
+      totalRows += loc.forecasts.length;
+      const first = loc.forecasts[0] || {};
+
+      // 3B: One marker per location
+      const marker = L.marker([loc.lat, loc.lng], {
+        icon: makeMarkerIcon(first.weather, first.max_temp),
+      }).addTo(map);
+
+      // 3C: Popup with weather details
+      marker.bindPopup(buildPopupHtml(loc), { maxWidth: 260 });
+      marker.on('click', () => highlightCard(loc.name));
+      markers[loc.name] = marker;
+
+      // 3D: Sidebar card
+      const slotsHtml = loc.forecasts.map(f => {
+        const s = f.start_time.slice(5, 16);
+        const e = f.end_time.slice(5, 16);
+        return `<div class="slot-row">
+          <span>${s}~${e.slice(-5)}</span>
+          <span>${weatherIcon(f.weather)} ${f.weather}</span>
+          <span>${f.min_temp}°~${f.max_temp}°</span>
+          <span>PoP:${f.pop}%</span>
+        </div>`;
+      }).join('');
+
+      const card = document.createElement('div');
+      card.className = 'loc-card';
+      card.id = `card-${loc.name}`;
+      card.innerHTML = `
+        <div class="loc-card-header">
+          <span class="loc-name">${loc.name}</span>
+          <span class="loc-weather-icon">${weatherIcon(first.weather)}</span>
+        </div>
+        <div class="loc-temps">
+          <strong>${first.min_temp}°C ~ ${first.max_temp}°C</strong>
+          <span class="loc-pop">💧 ${first.pop}%</span>
+          &nbsp;${first.weather || ''}
+        </div>
+        <div class="loc-slots">${slotsHtml}</div>
+      `;
+      card.addEventListener('click', () => {
+        flyToLocation(loc);
+        highlightCard(loc.name);
+      });
+      listEl.appendChild(card);
+    });
+
+    // Status bar
+    document.getElementById('statRows').textContent = totalRows;
+    document.getElementById('statLocs').textContent = weatherData.length;
+    document.getElementById('statTime').textContent = new Date().toLocaleString('zh-TW');
+
+  } finally {
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+function highlightCard(name) {
+  if (activeCard) activeCard.classList.remove('active');
+  const card = document.getElementById(`card-${name}`);
+  if (card) {
+    card.classList.add('active');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    activeCard = card;
+  }
+}
+
+function flyToLocation(loc) {
+  map.flyTo([loc.lat, loc.lng], 10, { duration: 0.8 });
+  const marker = markers[loc.name];
+  if (marker) setTimeout(() => marker.openPopup(), 900);
+}
+
+// ── 3G: Refresh button ─────────────────────────────────────────────────────
+async function refreshData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 更新中…';
+  try {
+    const resp = await fetch('/api/refresh', { method: 'POST' });
+    const result = await resp.json();
+    await loadWeather();
+    btn.textContent = `✅ 已更新 (+${result.inserted})`;
+    setTimeout(() => { btn.textContent = '🔄 更新資料'; btn.disabled = false; }, 3000);
+  } catch (e) {
+    btn.textContent = '❌ 失敗';
+    setTimeout(() => { btn.textContent = '🔄 更新資料'; btn.disabled = false; }, 3000);
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadWeather();
+</script>
+</body>
+</html>
